@@ -88,36 +88,136 @@ if ($browser === null) {
 // Crear una nueva pestaña/página en cada ejecución
 $page = $browser->createPage();
 
-// Obtener sesión DevTools (Session ya es la sesión de protocolo)
+// Obtener sesión DevTools (Session ya es la sesión de protocolo) de la página principal de HotMovies
 $session = $page->getSession();
 
-// Habilitar logs de red (opcional)
+// Variable para guardar la URL del player si aparece
+$playerUrl = null;
+
+// Habilitar logs de red en la página actual
 try {
     $session->sendMessage(new Message('Network.enable'));
 } catch (\Throwable $e) {
     echo "Error enviando Network.enable: " . $e->getMessage() . "\n";
 }
 
-// Escuchar requests (la librería emite eventos con prefijo 'method:')
-$session->on('method:Network.requestWillBeSent', function ($params) {
-    $url = $params['request']['url'] ?? '';
-    $method = $params['request']['method'] ?? '';
-    echo "➡ $method $url\n";
-});
+// Función auxiliar para enganchar listeners de Network en una sesión dada
+$attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') use (&$playerUrl, $browser) {
+    // Habilitar Network en la sesión objetivo
+    try {
+        $sessionToUse->sendMessage(new Message('Network.enable'));
+    } catch (\Throwable $e) {
+        echo "[$contextLabel] Error enviando Network.enable: " . $e->getMessage() . "\n";
+    }
 
-// Escuchar respuestas
-$session->on('method:Network.responseReceived', function ($params) {
-    $url = $params['response']['url'] ?? '';
-    $status = $params['response']['status'] ?? '';
-    echo "⬅ [$status] $url\n";
-});
+    // Escuchar requests
+    $sessionToUse->on('method:Network.requestWillBeSent', function ($params) use (&$playerUrl, $browser, $contextLabel) {
+        $url = $params['request']['url'] ?? '';
+        $method = $params['request']['method'] ?? '';
+        $type = $params['type'] ?? '';
+        $frameId = $params['frameId'] ?? '';
+        $initiator = $params['initiator']['type'] ?? '';
+
+        echo "[$contextLabel] ➡ [$type] frame=$frameId initiator=$initiator $method $url\n";
+
+        // Detectar IFRAME del player sólo en el contexto principal (no re-disparar dentro del propio player)
+        if (
+            $contextLabel === 'main'
+            && $playerUrl === null
+            && str_starts_with($url, 'https://www.adultempire.com/gw/player/')
+            && str_contains($url, 'type=scene')
+        ) {
+            $playerUrl = $url;
+            echo "********** IFRAME DEL PLAYER DETECTADO, ABRIENDO NUEVA PÁGINA **********\n";
+            echo "Player URL: $playerUrl\n";
+
+            try {
+                // Creamos una nueva pestaña para el player y enganchamos logging ANTES de navegar
+                $playerPage = $browser->createPage();
+                $playerSession = $playerPage->getSession();
+
+                echo "[player] Adjuntando logging de red (Network.enable + listeners)...\n";
+                // Adjuntamos listeners de red en la pestaña del player
+                // Importante: esto se hace ANTES de la navegación para no perdernos las primeras peticiones
+                ($GLOBALS['attachNetworkLoggingForPlayer'])($playerSession, 'player');
+
+                echo "[player] Navegando a player URL...\n";
+                $playerPage->navigate($playerUrl)->waitForNavigation();
+
+                echo "[player] Intentando iniciar reproducción (click/play)...\n";
+                try {
+                    // Esperar un poco a que cargue el DOM del player
+                    sleep(3);
+
+                    // Click en el centro por si acaso es un overlay
+                    $playerPage->mouse()->move(400, 300);
+                    $playerPage->mouse()->click();
+                    usleep(500);
+                    $playerPage->mouse()->move(400, 300);
+                    $playerPage->mouse()->click();
+                    usleep(500);
+                    $playerPage->close();
+
+                } catch (\Throwable $e) {
+                    echo "Error en interacción con player: " . $e->getMessage() . "\n";
+                }
+            } catch (\Throwable $e) {
+                echo "Error creando/navegando página del player: " . $e->getMessage() . "\n";
+            }
+        }
+
+        $path = parse_url($url, PHP_URL_PATH) ?? '';
+        $isHls = str_contains($url, 'internal-video.adultempire.com')
+            || str_contains($url, 'master.m3u8')
+            || str_ends_with($path, '.m3u8')
+            || str_ends_with($path, '.ts');
+
+        $isVerify = str_contains($url, 'player.digiflix.video/verify');
+
+        if ($isHls || $isVerify) {
+            echo "[$contextLabel] ********** REQUEST ESPECIAL DETECTADA **********\n";
+            echo "URL: $url\n";
+            echo "TYPE: $type | FRAME: $frameId | INITIATOR: $initiator | METHOD: $method\n";
+            echo "[$contextLabel] ***********************************************\n";
+        }
+    });
+
+    // Escuchar respuestas
+    $sessionToUse->on('method:Network.responseReceived', function ($params) use ($contextLabel) {
+        $url = $params['response']['url'] ?? '';
+        $status = $params['response']['status'] ?? '';
+        $type = $params['type'] ?? '';
+
+        echo "[$contextLabel] ⬅ [$status][$type] $url\n";
+
+        if (
+            str_contains($url, 'internal-video.adultempire.com')
+            || str_contains($url, 'master.m3u8')
+            || str_contains($url, 'player.digiflix.video/verify')
+        ) {
+            echo "[$contextLabel] ##### RESPUESTA ESPECIAL DETECTADA #####\n";
+            echo "URL: $url | STATUS: $status | TYPE: $type\n";
+            echo "[$contextLabel] ########################################\n";
+        }
+    });
+};
+
+// Guardamos una referencia global específica para el player para poder usarla dentro del closure principal sin recursión
+$GLOBALS['attachNetworkLoggingForPlayer'] = $attachNetworkLogging;
+
+// Enganchar logging en la página principal
+$attachNetworkLogging($session, 'main');
 
 try {
-    // Navegar
-    echo "Navegando a hotmovies.com...\n";
+    // Navegar a la escena principal de HotMovies
+    echo "Navegando a " . VIDEO_URL . "...\n";
     $page->navigate(VIDEO_URL)->waitForNavigation();
 
-    sleep(10);
+    // Mostrar URL final
+    $currentUrl = $page->getCurrentUrl();
+    echo "URL final tras navegación: $currentUrl\n";
+
+    sleep(5);
 
 } catch (\Throwable $e) {
     echo "Error durante la navegación: " . $e->getMessage() . "\n";
@@ -125,6 +225,7 @@ try {
 
 // NO cerramos el navegador para reutilizar la instancia en futuras ejecuciones
 // Opcionalmente se podría cerrar sólo la pestaña creada:
-// $page->close();
+$page->close();
 
-echo "Script finalizado (el navegador sigue abierto).\n";
+echo "Script finalizado (el navegador sigue abierto).
+";
