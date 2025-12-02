@@ -140,7 +140,6 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
             $contextLabel === 'main'
             && $playerUrl === null
             && str_starts_with($url, 'https://www.adultempire.com/gw/player/')
-            && str_contains($url, 'type=scene')
         ) {
             $titleVideo = str_replace(" - HotMovies", "", $page->evaluate('document.title')->getReturnValue());
             // Sanear título para ser nombre de archivo válido en Windows
