@@ -5,8 +5,7 @@ use HeadlessChromium\BrowserFactory;
 use HeadlessChromium\Communication\Message;
 
 
-const VIDEO_URL = 'https://www.hotmovies.com/adult-clips/1622499/sexmex-immoral-family-part-1';
-
+$videoUrl = $argv[1];
 
 echo "Iniciando script...\n";
 
@@ -16,6 +15,7 @@ $socketFile = __DIR__ . DIRECTORY_SEPARATOR . 'browser_socket_uri.txt';
 // Intentar conectarse a un navegador ya existente
 $browser = null;
 $browserFactory = null;
+$titleVideo = null;
 
 if (is_file($socketFile)) {
     $uri = trim(file_get_contents($socketFile));
@@ -102,7 +102,7 @@ try {
 }
 
 // Función auxiliar para enganchar listeners de Network en una sesión dada
-$attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') use (&$playerUrl, $browser) {
+$attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') use (&$playerUrl, $browser, $page) {
     // Habilitar Network en la sesión objetivo
     try {
         $sessionToUse->sendMessage(new Message('Network.enable'));
@@ -111,7 +111,10 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
     }
 
     // Escuchar requests
-    $sessionToUse->on('method:Network.requestWillBeSent', function ($params) use (&$playerUrl, $browser, $contextLabel) {
+    $sessionToUse->on('method:Network.requestWillBeSent', function ($params) use (&$playerUrl, $browser, $contextLabel, $page) {
+
+        global $titleVideo;
+
         $url = $params['request']['url'] ?? '';
         $method = $params['request']['method'] ?? '';
         $type = $params['type'] ?? '';
@@ -127,6 +130,10 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
             && str_starts_with($url, 'https://www.adultempire.com/gw/player/')
             && str_contains($url, 'type=scene')
         ) {
+            $titleVideo = str_replace(" - HotMovies", "", $page->evaluate('document.title')->getReturnValue());
+
+            echo "Título del video: $titleVideo\n";
+
             $playerUrl = $url;
             echo "********** IFRAME DEL PLAYER DETECTADO, ABRIENDO NUEVA PÁGINA **********\n";
             echo "Player URL: $playerUrl\n";
@@ -167,37 +174,17 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
         }
 
         $path = parse_url($url, PHP_URL_PATH) ?? '';
-        $isHls = str_contains($url, 'internal-video.adultempire.com')
-            || str_contains($url, 'master.m3u8')
-            || str_ends_with($path, '.m3u8')
-            || str_ends_with($path, '.ts');
+        $isHls = str_ends_with($path, '.m3u8');
 
-        $isVerify = str_contains($url, 'player.digiflix.video/verify');
-
-        if ($isHls || $isVerify) {
+        if ($isHls) {
             echo "[$contextLabel] ********** REQUEST ESPECIAL DETECTADA **********\n";
             echo "URL: $url\n";
             echo "TYPE: $type | FRAME: $frameId | INITIATOR: $initiator | METHOD: $method\n";
             echo "[$contextLabel] ***********************************************\n";
-        }
-    });
 
-    // Escuchar respuestas
-    $sessionToUse->on('method:Network.responseReceived', function ($params) use ($contextLabel) {
-        $url = $params['response']['url'] ?? '';
-        $status = $params['response']['status'] ?? '';
-        $type = $params['type'] ?? '';
-
-        echo "[$contextLabel] ⬅ [$status][$type] $url\n";
-
-        if (
-            str_contains($url, 'internal-video.adultempire.com')
-            || str_contains($url, 'master.m3u8')
-            || str_contains($url, 'player.digiflix.video/verify')
-        ) {
-            echo "[$contextLabel] ##### RESPUESTA ESPECIAL DETECTADA #####\n";
-            echo "URL: $url | STATUS: $status | TYPE: $type\n";
-            echo "[$contextLabel] ########################################\n";
+            echo "[$contextLabel] Iniciando descarga con yt-dlp...\n";
+            echo "Comando: cd /d F:\yt && yt-dlp.exe \"$url\" --output=\"$titleVideo.mp4\"\n";
+            system("cd /d F:\yt && yt-dlp.exe \"$url\" --output=\"$titleVideo.mp4\"");
         }
     });
 };
@@ -210,8 +197,8 @@ $attachNetworkLogging($session, 'main');
 
 try {
     // Navegar a la escena principal de HotMovies
-    echo "Navegando a " . VIDEO_URL . "...\n";
-    $page->navigate(VIDEO_URL)->waitForNavigation();
+    echo "Navegando a " . $videoUrl . "...\n";
+    $page->navigate($videoUrl)->waitForNavigation();
 
     // Mostrar URL final
     $currentUrl = $page->getCurrentUrl();
