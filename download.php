@@ -6,6 +6,15 @@ use HeadlessChromium\Communication\Message;
 
 
 $videoUrl = $argv[1];
+$quality = $argv[2] ?? null; // Null -> The best available
+
+$quality = match ($quality) {
+    "1080p" => '-f "bv*+ba/b" --exec "cmd /c ffmpeg -y -i {} -vf \"hwupload_cuda,scale_cuda=w=-2:h=1080,hwdownload,format=yuv420p\" -c:v h264_nvenc -preset p1 -rc vbr_hq -c:a aac -b:a 192k {}-1080p.mp4 || exit /b 0"',
+    "720p" => '-f "bv*+ba/b" --exec "cmd /c ffmpeg -y -i {} -vf \"hwupload_cuda,scale_cuda=w=-2:h=720,hwdownload,format=yuv420p\" -c:v h264_nvenc -preset p1 -rc vbr_hq -c:a aac -b:a 192k {}-720p.mp4 || exit /b 0"',
+    "480p" => '-f "bv*+ba/b" --exec "cmd /c ffmpeg -y -i {} -vf \"hwupload_cuda,scale_cuda=w=-2:h=480,hwdownload,format=yuv420p\" -c:v h264_nvenc -preset p1 -rc vbr_hq -c:a aac -b:a 192k {}-480p.mp4 || exit /b 0"',
+    "360p" => '-f "bv*+ba/b" --exec "cmd /c ffmpeg -y -i {} -vf \"hwupload_cuda,scale_cuda=w=-2:h=360,hwdownload,format=yuv420p\" -c:v h264_nvenc -preset p1 -rc vbr_hq -c:a aac -b:a 192k {}-360p.mp4 || exit /b 0"',
+    default => null,
+};
 
 echo "Iniciando script...\n";
 
@@ -16,6 +25,8 @@ $socketFile = __DIR__ . DIRECTORY_SEPARATOR . 'browser_socket_uri.txt';
 $browser = null;
 $browserFactory = null;
 $titleVideo = null;
+// Evita ejecutar yt-dlp/ffmpeg más de una vez por ejecución
+$downloadStarted = false;
 
 if (is_file($socketFile)) {
     $uri = trim(file_get_contents($socketFile));
@@ -102,7 +113,7 @@ try {
 }
 
 // Función auxiliar para enganchar listeners de Network en una sesión dada
-$attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') use (&$playerUrl, $browser, $page) {
+$attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') use (&$playerUrl, $browser, $page, &$downloadStarted) {
     // Habilitar Network en la sesión objetivo
     try {
         $sessionToUse->sendMessage(new Message('Network.enable'));
@@ -111,9 +122,10 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
     }
 
     // Escuchar requests
-    $sessionToUse->on('method:Network.requestWillBeSent', function ($params) use (&$playerUrl, $browser, $contextLabel, $page) {
+    $sessionToUse->on('method:Network.requestWillBeSent', function ($params) use (&$playerUrl, $browser, $contextLabel, $page, &$downloadStarted) {
 
         global $titleVideo;
+        global $quality;
 
         $url = $params['request']['url'] ?? '';
         $method = $params['request']['method'] ?? '';
@@ -131,6 +143,9 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
             && str_contains($url, 'type=scene')
         ) {
             $titleVideo = str_replace(" - HotMovies", "", $page->evaluate('document.title')->getReturnValue());
+            // Sanear título para ser nombre de archivo válido en Windows
+            $titleVideo = preg_replace('/[<>:"\/\\\\|?*]+/', '_', $titleVideo);
+            $titleVideo = trim(preg_replace('/\s+/', ' ', $titleVideo));
 
             echo "Título del video: $titleVideo\n";
 
@@ -177,14 +192,29 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
         $isHls = str_ends_with($path, '.m3u8');
 
         if ($isHls) {
+            // Evitar múltiples ejecuciones si ya iniciamos una descarga en esta ejecución
+            if ($downloadStarted) {
+                echo "[$contextLabel] Descarga ya iniciada previamente. Ignorando URL HLS adicional.\n";
+                return;
+            }
+
             echo "[$contextLabel] ********** REQUEST ESPECIAL DETECTADA **********\n";
             echo "URL: $url\n";
             echo "TYPE: $type | FRAME: $frameId | INITIATOR: $initiator | METHOD: $method\n";
             echo "[$contextLabel] ***********************************************\n";
 
             echo "[$contextLabel] Iniciando descarga con yt-dlp...\n";
-            echo "Comando: cd /d F:\yt && yt-dlp.exe \"$url\" --output=\"$titleVideo.mp4\"\n";
-            system("cd /d F:\yt && yt-dlp.exe \"$url\" --output=\"$titleVideo.mp4\"");
+            $downloadStarted = true;
+
+            $command = "cd /d F:\\yt && yt-dlp.exe";
+            $command .= " \"$url\" --output=\"$titleVideo.mp4\"";
+
+            if (!is_null($quality)) {
+                $command .= " $quality";
+            }
+
+            echo "Comando: $command\n";
+            system($command);
         }
     });
 };
@@ -214,5 +244,4 @@ try {
 // Opcionalmente se podría cerrar sólo la pestaña creada:
 $page->close();
 
-echo "Script finalizado (el navegador sigue abierto).
-";
+echo "Script finalizado (el navegador sigue abierto).\n";
