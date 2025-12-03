@@ -139,7 +139,7 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
         if (
             $contextLabel === 'main'
             && $playerUrl === null
-            && str_starts_with($url, 'https://www.adultempire.com/gw/player/' && !str_contains($url,"aeplayer.js"))
+            && str_starts_with($url, 'https://www.adultempire.com/gw/player/')
         ) {
             $titleVideo = str_replace(" - HotMovies", "", $page->evaluate('document.title')->getReturnValue());
             // Sanear título para ser nombre de archivo válido en Windows
@@ -151,6 +151,10 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
             $playerUrl = $url;
             echo "********** IFRAME DEL PLAYER DETECTADO, ABRIENDO NUEVA PÁGINA **********\n";
             echo "Player URL: $playerUrl\n";
+
+            if ($playerUrl == "https://www.adultempire.com/gw/player/aeplayer.js" || $url == "https://www.adultempire.com/gw/player/aeplayer.js") {
+                return;
+            }
 
             try {
                 // Creamos una nueva pestaña para el player y enganchamos logging ANTES de navegar
