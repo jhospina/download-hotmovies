@@ -141,7 +141,7 @@ $attachNetworkLogging = function ($sessionToUse, string $contextLabel = 'main') 
             && $playerUrl === null
             && str_starts_with($url, 'https://www.adultempire.com/gw/player/')
         ) {
-            $titleVideo = str_replace(" - HotMovies", "", $page->evaluate('document.title')->getReturnValue());
+            $titleVideo = substr(str_replace([" - HotMovies", "'"], "", $page->evaluate('document.title')->getReturnValue()), 0, 60);
             // Sanear título para ser nombre de archivo válido en Windows
             $titleVideo = preg_replace('/[<>:"\/\\\\|?*]+/', '_', $titleVideo);
             $titleVideo = trim(preg_replace('/\s+/', ' ', $titleVideo));
