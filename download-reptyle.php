@@ -164,20 +164,20 @@ function downloadImage(string $url, string $destinationPath): void
 
     $client = new Client([
         'timeout' => 60,
-        'verify'  => true,
+        'verify' => true,
     ]);
 
     try {
         $response = $client->request('GET', $url, [
             'headers' => [
-                'Accept'          => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                 'Accept-Language' => 'es-US,es;q=0.9,en-US;q=0.8,en;q=0.7,es-419;q=0.6',
-                'Cache-Control'   => 'no-cache',
-                'Pragma'          => 'no-cache',
-                'DNT'             => '1',
-                'Referer'         => 'https://app.reptyle.com/',
+                'Cache-Control' => 'no-cache',
+                'Pragma' => 'no-cache',
+                'DNT' => '1',
+                'Referer' => 'https://app.reptyle.com/',
                 'Upgrade-Insecure-Requests' => '1',
-                'User-Agent'      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
 
                 // Cookies (equivalente a -b en curl)
                 'Cookie' => "d_uid=b5ff1bb6-3c2e-a082-0a72-d783376786df; d_uidb=b5ff1bb6-3c2e-a082-0a72-d783376786df; nats_sess=2ff9f6664c1443309ec90666cf7885c0; user_label=phoenix%2Cupsab2; access_token=$accessToken; refresh_token=$refreshToken",
@@ -214,21 +214,21 @@ if (is_null($streamUrlVideo)) {
 }
 
 list($titleVideo, $source, $slug, $fullSlug) = getMetatadataVideo($videoId);
-$titleVideo = str_pad($counter, "0") . " - " . $titleVideo;
+$titleVideo = str_pad($counter, 3, "0", STR_PAD_LEFT) . " - " . $titleVideo;
 
 file_put_contents("app_reptyle_counter.txt", $counter + 1);
 
-$destinationPath = "E:\\_app_reptyle_pending\\$titleVideo\\$titleVideo.mp4";
+$destinationPath = "E:\\_app_reptyle_pending\\$source\\$titleVideo\\$titleVideo.mp4";
 
 // Create directory if it doesn't exist
-if (!is_dir("E:\\_app_reptyle_pending\\$titleVideo")) {
-    mkdir("E:\\_app_reptyle_pending\\$titleVideo", 0777, true);
+if (!is_dir("E:\\_app_reptyle_pending\\$source\\$titleVideo")) {
+    mkdir("E:\\_app_reptyle_pending\\$source\\$titleVideo", 0777, true);
 }
 
 // DOWNLOAD GALLERY IMAGES
 
 $downloadImage = "https://downloads.reptyle.com/members/" . $source . "/" . $slug . "/pictures_hd/" . $fullSlug . ".zip";
-$imagesDestination = "E:\\_app_reptyle_pending\\$titleVideo\\$titleVideo.zip";
+$imagesDestination = "E:\\_app_reptyle_pending\\$source\\$titleVideo\\$titleVideo.zip";
 
 echo "Downloading images from: $downloadImage\n";
 downloadImage($downloadImage, $imagesDestination);
